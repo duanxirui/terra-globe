@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#050c16" />
+    <meta name="description" content="一座可自由旋转、缩放、查看国家边界的交互式 3D 地球。" />
+    <title>TERRA — 交互式地球探索</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <div class="background-glow background-glow--one"></div>
+      <div class="background-glow background-glow--two"></div>
+      <div class="background-grid" aria-hidden="true"></div>
+
+      <header class="site-header">
+        <a class="brand" href="./" aria-label="TERRA 地球探索首页">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 42 42" fill="none">
+              <circle cx="21" cy="21" r="16.5" stroke="currentColor" stroke-width="1.15" />
+              <ellipse cx="21" cy="21" rx="8" ry="16.5" stroke="currentColor" stroke-width="1.15" />
+              <path d="M4.5 21h33M8.5 10.6c4 3.1 21 3.1 25 0M8.5 31.4c4-3.1 21-3.1 25 0" stroke="currentColor" stroke-width="1.15" />
+              <circle cx="29" cy="12" r="3.2" fill="#76F6C5" />
+            </svg>
+          </span>
+          <span class="brand-name">TERRA<span class="brand-dot">.</span></span>
+          <span class="brand-divider"></span>
+          <span class="brand-subtitle">DIGITAL PLANET</span>
+        </a>
+
+        <div class="header-center"><span class="header-line"></span> THE WORLD IS YOURS TO EXPLORE <span class="header-line"></span></div>
+
+        <div class="header-actions">
+          <span class="system-status"><span class="status-pulse"></span> 3D ENGINE <b>ONLINE</b></span>
+          <button class="icon-button fullscreen-button" id="fullscreenButton" type="button" aria-label="切换全屏" title="切换全屏">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M8 3H4a1 1 0 0 0-1 1v4m13-5h4a1 1 0 0 1 1 1v4M3 16v4a1 1 0 0 0 1 1h4m13-5v4a1 1 0 0 1-1 1h-4" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="main-layout">
+        <section class="intro-panel" aria-labelledby="heroTitle">
+          <div class="intro-kicker"><span class="mini-cross">✳</span> PLANETARY EXPLORATION <span class="kicker-number">/ 001</span></div>
+          <h1 id="heroTitle"><span data-ui="heroFirst">在指尖</span><br /><span class="headline-emphasis" data-ui="heroSecond">漫游地球</span><span class="headline-period">.</span></h1>
+          <p class="hero-description" data-ui="heroDescription">从浩瀚宇宙，遇见熟悉的蓝色星球。探索世界各国和省州级行政区划。</p>
+
+          <div class="hero-actions">
+            <button class="primary-button" id="exploreButton" type="button">
+              <span data-ui="explore">开始探索</span>
+              <span class="button-arrow" aria-hidden="true">↗</span>
+            </button>
+            <button class="text-button" id="resetButton" type="button"><span data-ui="reset">重置视角</span> <span aria-hidden="true">↺</span></button>
+          </div>
+
+          <div class="stats-row" id="statsRow" aria-label="地球探索参数">
+            <div class="stat"><strong id="countryCount">—</strong><span data-ui="countriesCount">国家 / 地区</span></div>
+            <span class="stat-separator"></span>
+            <div class="stat"><strong>360<span class="degree">°</span></strong><span data-ui="freeExplore">自由探索</span></div>
+            <span class="stat-separator"></span>
+            <div class="stat"><strong>3D</strong><span data-ui="immersive">沉浸视角</span></div>
+          </div>
+
+          <article class="location-card" aria-live="polite">
+            <div class="location-card-header">
+              <div class="location-caption"><span class="location-cross">⊕</span> <span data-ui="currentLocation">当前位置</span> <span class="location-index">01 / 01</span></div>
+              <span class="location-live"><span></span> LIVE</span>
+            </div>
+            <div class="location-body">
+              <div>
+                <p class="location-label" data-ui="exploring">正在探索</p>
+                <h2 id="regionName">整个世界</h2>
+                <p class="location-detail" id="regionDetail">点击地球上的任意国家，开启探索</p>
+              </div>
+              <div class="location-target" aria-hidden="true"><span></span><span></span></div>
+            </div>
+            <div class="location-coordinates">
+              <div><span data-ui="latitude">纬度</span><strong id="latitudeValue">00.000°</strong></div>
+              <div><span data-ui="longitude">经度</span><strong id="longitudeValue">000.000°</strong></div>
+            </div>
+          </article>
+        </section>
+
+        <section class="globe-stage" id="globeStage" aria-label="可以拖拽旋转、滚轮缩放并选择国家或省州的三维地球">
+          <div class="stage-light"></div>
+          <div class="stage-orbit stage-orbit--outer"></div>
+          <div class="stage-orbit stage-orbit--inner"></div>
+          <canvas id="globeCanvas" aria-label="互动地球：拖拽旋转，滚轮缩放，点击国家或省州"></canvas>
+          <canvas id="labelsCanvas" class="labels-canvas" aria-hidden="true"></canvas>
+
+          <div class="map-search" id="mapSearch">
+            <div class="map-search-field">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
+              <input id="placeSearch" type="search" placeholder="搜索国家 / 省州" autocomplete="off" spellcheck="false" aria-label="搜索国家或省州" aria-expanded="false" aria-controls="searchResults" />
+              <span class="search-key" aria-hidden="true">↵</span>
+            </div>
+            <div class="search-results" id="searchResults" role="listbox" hidden></div>
+            <div class="map-search-hint" data-ui="searchHint">国家 / 地区和省州级两级；部分区划仅有位置参考或近似边界</div>
+            <div class="map-detail-indicator" role="status" aria-live="off"><span data-ui="currentLevel">当前层级</span><strong id="detailLevelLabel">国家</strong></div>
+          </div>
+
+          <div class="planet-index" aria-hidden="true"><span class="planet-index-line"></span> SOL SYSTEM / 03</div>
+          <div class="planet-note" aria-hidden="true"><span class="planet-note-circle"></span><div><strong>EARTH</strong><small>12742 KM · DIAMETER</small></div></div>
+          <div class="stage-bottom-label" aria-hidden="true">FIG 01. — OUR HOME PLANET</div>
+
+          <div class="globe-loader" id="globeLoader" role="status" aria-live="polite">
+            <span class="loader-ring"></span>
+            <strong id="loaderTitle">正在构建地球</strong>
+            <small id="loaderDetail">LOADING PLANET DATA...</small>
+          </div>
+
+          <div class="globe-tooltip" id="globeTooltip" role="status" hidden>
+            <span class="tooltip-kicker" data-ui="tooltipRegion">区域</span>
+            <strong id="tooltipName">—</strong>
+            <small id="tooltipCoords">—</small>
+          </div>
+
+          <div class="zoom-controls" id="zoomControls" aria-label="地球缩放操作">
+            <button type="button" id="zoomIn" aria-label="放大地球" title="放大">+</button>
+            <span class="zoom-divider"></span>
+            <button type="button" id="zoomOut" aria-label="缩小地球" title="缩小">−</button>
+            <span class="zoom-divider"></span>
+            <button type="button" id="centerButton" aria-label="复位地球视角" title="回到初始视角">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="2" /><path d="M12 2v3m0 14v3M2 12h3m14 0h3" /></svg>
+            </button>
+          </div>
+
+          <div class="control-dock" id="controlDock" role="group" aria-label="地球显示设置">
+            <div class="dock-control-row">
+              <span class="dock-row-label" data-ui="labels">地名标注</span>
+              <button class="dock-toggle is-active" id="oceanToggle" type="button" aria-pressed="true"><span class="toggle-symbol" aria-hidden="true">≋</span><span data-ui="oceans">海洋</span><span class="toggle-indicator"></span></button>
+              <span class="dock-separator"></span>
+              <button class="dock-toggle is-active" id="countryToggle" type="button" aria-pressed="true"><span class="toggle-symbol" aria-hidden="true">◈</span><span data-ui="countries">国家</span><span class="toggle-indicator"></span></button>
+              <span class="dock-separator"></span>
+              <button class="dock-toggle is-active" id="adminToggle" type="button" aria-pressed="true"><span class="toggle-symbol" aria-hidden="true">▦</span><span data-ui="provinces">省州</span><span class="toggle-indicator"></span></button>
+            </div>
+            <div class="dock-control-row">
+              <span class="dock-row-label" data-ui="mapView">地图视图</span>
+              <button class="dock-toggle is-active" id="borderToggle" type="button" aria-pressed="true"><span class="toggle-symbol toggle-symbol--borders" aria-hidden="true">⬡</span><span data-ui="borders">国界</span><span class="toggle-indicator"></span></button>
+              <span class="dock-separator"></span>
+              <button class="dock-toggle" id="gridToggle" type="button" aria-pressed="false"><span class="toggle-symbol" aria-hidden="true">⌗</span><span data-ui="grid">经纬网</span><span class="toggle-indicator"></span></button>
+              <span class="dock-separator"></span>
+              <button class="dock-toggle is-active" id="rotateToggle" type="button" aria-pressed="true"><span class="toggle-symbol" aria-hidden="true">◌</span><span data-ui="rotate">自动旋转</span><span class="toggle-indicator"></span></button>
+            </div>
+            <div class="dock-control-row dock-language-row" role="group" aria-label="Map language">
+              <span class="dock-row-label" data-ui="language">显示语言</span>
+              <div class="language-switch" role="group" aria-label="地图语言 / Map language">
+                <button type="button" class="language-button is-active" id="langZh" aria-pressed="true" lang="zh-CN">中文</button>
+                <button type="button" class="language-button" id="langEn" aria-pressed="false" lang="en">EN</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <div class="footer-left"><span class="footer-mini-logo">◉</span> TERRA EXPLORER <span class="footer-copy">/ A NEW PERSPECTIVE ON EARTH</span></div>
+        <a class="footer-attribution" href="https://www.geonames.org/" target="_blank" rel="noopener noreferrer">Location references: GeoNames · CC BY 4.0</a>
+        <div class="footer-instruction"><span class="mouse-icon" aria-hidden="true"></span><span data-ui="dragHint">拖动旋转</span><span class="footer-bullet">·</span><span data-ui="zoomHint">滚轮缩放</span><span class="footer-bullet">·</span><span data-ui="clickHint">点击查看国家或省州</span></div>
+        <div class="footer-right">DESIGNED FOR CURIOSITY <span>✳</span></div>
+      </footer>
+    </div>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
