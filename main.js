@@ -1,6 +1,7 @@
 import { createMapLabels } from './map-labels.js';
 import { decodeAtlas, countryAt, prepareRegionLookup, regionAt, pointInRing, findInteriorPoint, reconcileAdministrativeHit } from './geo-lookup.js';
 import { MAP_ZOOM, detailLevel, placeName } from './place-names.js';
+import { composeEarthSurface } from './earth-texture.js';
 
 // A dependency-free static website. Three.js and world borders are bundled locally,
 // with public CDNs as optional fallback sources.
@@ -220,87 +221,58 @@ function enrichCountryNames(atlasCountries, names) {
   }
 }
 
-function traceRing(ctx, ring, width, height, offset = 0) {
-  if (ring.length < 3) return;
-  let previousLon = ring[0][0];
-  let unwrappedLon = previousLon;
-  ctx.moveTo((unwrappedLon + 180) / 360 * width + offset * width, (90 - ring[0][1]) / 180 * height);
-  for (let i = 1; i < ring.length; i++) {
-    let delta = ring[i][0] - previousLon;
-    if (delta > 180) delta -= 360;
-    if (delta < -180) delta += 360;
-    unwrappedLon += delta;
-    ctx.lineTo((unwrappedLon + 180) / 360 * width + offset * width, (90 - ring[i][1]) / 180 * height);
-    previousLon = ring[i][0];
-  }
-  ctx.closePath();
+// The per-pixel composition is CPU heavy, so it runs in a worker when the
+// browser supports OffscreenCanvas. Otherwise the same algorithm runs inline.
+function supportsOffscreenWorker() {
+  return typeof Worker !== 'undefined' && typeof OffscreenCanvas !== 'undefined'
+    && typeof OffscreenCanvas.prototype.transferToImageBitmap === 'function';
 }
 
-function makeEarthTexture(THREE, countries, renderer) {
-  const width = 1536, height = 768;
-  const maskCanvas = document.createElement('canvas');
-  maskCanvas.width = width; maskCanvas.height = height;
-  const mask = maskCanvas.getContext('2d', { willReadFrequently: true });
-  mask.fillStyle = 'white';
-  for (const country of countries) {
-    for (const polygon of country.polygons) {
-      for (const offset of [-1, 0, 1]) {
-        mask.beginPath();
-        polygon.forEach((ring) => traceRing(mask, ring, width, height, offset));
-        mask.fill('evenodd');
-      }
-    }
-  }
-  const coverage = mask.getImageData(0, 0, width, height).data;
-  const textureCanvas = document.createElement('canvas');
-  textureCanvas.width = width; textureCanvas.height = height;
-  const ctx = textureCanvas.getContext('2d');
-  const pixels = ctx.createImageData(width, height);
+function renderEarthTextureInWorker(countries) {
+  return new Promise((resolve, reject) => {
+    let worker;
+    try { worker = new Worker('./earth-texture-worker.js', { type: 'module' }); }
+    catch (error) { reject(error); return; }
+    worker.addEventListener('message', (event) => {
+      worker.terminate();
+      if (event.data?.error) reject(new Error(event.data.error));
+      else resolve(event.data.bitmap);
+    });
+    worker.addEventListener('error', (event) => {
+      worker.terminate();
+      reject(new Error(event.message || '纹理生成的 Worker 初始化失败'));
+    });
+    worker.postMessage({ countries: countries.map((country) => ({ polygons: country.polygons })) });
+  });
+}
 
-  for (let y = 0; y < height; y++) {
-    const latitude = 90 - 180 * y / height;
-    const polar = Math.abs(latitude) / 90;
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4;
-      const wave = Math.sin(x * .017 + Math.sin(y * .022) * 3) * Math.cos(y * .031 - x * .007);
-      const fine = Math.sin(x * .115 + y * .081) * Math.sin(y * .097 - x * .047);
-      const relief = wave * 5.2 + fine * 2.6;
-      const snow = clamp((polar - .72) * 2.9, 0, 1);
-
-      if (coverage[i + 3] > 100) {
-        const arid = clamp((Math.abs(latitude) - 12) / 21, 0, 1) * clamp((48 - Math.abs(latitude)) / 17, 0, 1);
-        pixels.data[i] = 29 + arid * 34 + snow * 148 + relief * 1.6;
-        pixels.data[i + 1] = 84 + arid * 20 + snow * 123 + relief * 2.3;
-        pixels.data[i + 2] = 78 - arid * 7 + snow * 119 + relief * 1.8;
-      } else {
-        pixels.data[i] = 7 + snow * 33 + relief * .45;
-        pixels.data[i + 1] = 33 + snow * 46 + relief * 1.5;
-        pixels.data[i + 2] = 57 + snow * 53 + relief * 2.3;
-      }
-      pixels.data[i + 3] = 255;
-    }
-  }
-  ctx.putImageData(pixels, 0, 0);
-
-  // A second coastal stroke subtly separates land from shallow water.
-  ctx.save();
-  ctx.lineWidth = .7;
-  ctx.strokeStyle = 'rgba(120, 214, 180, .34)';
-  for (const country of countries) {
-    for (const polygon of country.polygons) {
-      for (const offset of [-1, 0, 1]) {
-        ctx.beginPath();
-        polygon.forEach((ring) => traceRing(ctx, ring, width, height, offset));
-        ctx.stroke();
-      }
-    }
-  }
-  ctx.restore();
-
-  const texture = new THREE.CanvasTexture(textureCanvas);
+function earthTextureFromSource(THREE, renderer, source, flipY = true) {
+  const texture = new THREE.Texture(source);
+  texture.flipY = flipY;
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  texture.needsUpdate = true;
   return texture;
+}
+
+function makeEarthTextureOnMainThread(THREE, countries, renderer) {
+  const canvas = composeEarthSurface((width, height) => {
+    const element = document.createElement('canvas');
+    element.width = width; element.height = height;
+    return element;
+  }, countries);
+  return earthTextureFromSource(THREE, renderer, canvas);
+}
+
+async function makeEarthTexture(THREE, countries, renderer) {
+  if (supportsOffscreenWorker()) {
+    try {
+      const bitmap = await renderEarthTextureInWorker(countries);
+      // The worker bakes the vertical flip, so this texture uploads unflipped.
+      return earthTextureFromSource(THREE, renderer, bitmap, false);
+    } catch { /* fall through to the inline path */ }
+  }
+  return makeEarthTextureOnMainThread(THREE, countries, renderer);
 }
 
 function makeCloudTexture(THREE) {
@@ -470,12 +442,12 @@ async function start() {
   scene.add(rimLight);
 
   const earth = new THREE.Mesh(
-    new THREE.SphereGeometry(RADIUS, 128, 96),
+    new THREE.SphereGeometry(RADIUS, 96, 64),
     new THREE.MeshPhongMaterial({ color: 0xb4f2e8, specular: 0x274f5d, shininess: 19, emissive: 0x071725, emissiveIntensity: .47 }),
   );
   globe.add(earth);
   const clouds = new THREE.Mesh(
-    new THREE.SphereGeometry(RADIUS + .008, 96, 64),
+    new THREE.SphereGeometry(RADIUS + .008, 64, 48),
     new THREE.MeshBasicMaterial({ map: makeCloudTexture(THREE), transparent: true, opacity: .4, depthWrite: false }),
   );
   globe.add(clouds);
@@ -998,7 +970,7 @@ async function start() {
     adminBorders.add(buildAdminBorders(THREE, state.regions));
     setLoading('正在生成地表纹理', 'GENERATING SURFACE TEXTURE...');
     await new Promise((resolve) => requestAnimationFrame(resolve));
-    earth.material.map = makeEarthTexture(THREE, atlas.countries, renderer);
+    earth.material.map = await makeEarthTexture(THREE, atlas.countries, renderer);
     earth.material.needsUpdate = true;
     borders.add(buildBorders(THREE, atlas));
     mapLabels.setData(labelData);

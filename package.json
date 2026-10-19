@@ -1,0 +1,13 @@
+{
+  "name": "terra-globe",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Interactive Three.js 3D earth with country and province-level labels.",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "node server.cjs",
+    "start": "node server.cjs"
+  }
+}

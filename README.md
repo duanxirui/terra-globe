@@ -12,6 +12,8 @@ npm run dev
 
 浏览器打开终端输出的地址，默认是 **http://localhost:4173**。如果端口被其他程序占用，开发服务器会自动尝试 `4174`、`4175` 等端口。也可以通过环境变量 `PORT` 明确指定端口。
 
+也可以使用任意静态文件服务器打开本目录，例如 `npx serve .`；页面是纯静态资源，不依赖构建步骤。
+
 无需执行 `npm install`：项目中的 Three.js 和世界地图数据已经保存在 `assets/`，可在离线环境运行；页面字体会自动回退到本地系统字体。
 
 ## 操作
@@ -31,30 +33,20 @@ npm run dev
 
 - `index.html` — 页面结构和交互控件。
 - `styles.css` — 响应式视觉风格。
-- `main.js` — Three.js 场景、球面投影、地形纹理、行政边界、定位和交互。
+- `main.js` — Three.js 场景、球面投影、行政边界、定位和交互；地表纹理生成优先交给 Worker。
 - `geo-lookup.js` — TopoJSON 解码、跨 180° 经线的国家与省州命中判断，处理跨日界线的多边形并缓存几何信息。
 - `map-labels.js` — 五大洋、国家及省州的球面文字投影、背面剔除、缩放策略及标签避让。
-- `geography-levels.js` — 省州一级层级筛选规则，供数据构建使用。
-- `current-tier-overrides.js` — 肯尼亚、布基纳法索、几内亚现行一级区划，以及新西兰地理岛群的层级修订。
-- `assets/primary-division-reference-points.json` — 72 条经过筛选的省州级行政区参考坐标，供离线重建使用，**不包含城市目录**。
-- `province-completions.js` — 为英、法、意、西、马达加斯加补入经核对的一级行政区名称与参考坐标。
-- `reform-administrations.js` — 越南、尼泊尔、印尼、刚果（金）、埃塞俄比亚、哈萨克斯坦等行政区划变动与名称修正。
 - `place-names.js` — 地名中英文选择和缩放级别配置。
-- `geography-corrections.js` — 经核实的个别行政地名修正，不改动原始边界。
+- `earth-texture.js` — 地表纹理合成算法（陆地掩膜、逐像素配色、海岸描边），由主线程与 Worker 共用。
+- `earth-texture-worker.js` — 在 Worker 内用 `OffscreenCanvas` 生成地表纹理，并以 `ImageBitmap` 回传主线程。
+- `package.json` — 仅声明 `npm run dev` / `npm start` 脚本，无第三方依赖。
+- `server.cjs` — 无第三方依赖的本地静态 HTTP 服务器，默认端口 4173。
 - `assets/three.module.js` — Three.js r165 ESM 构建。
 - `assets/countries-50m.json` — 优先使用的 1:50m 国家 / 地区边界（world-atlas TopoJSON）。
 - `assets/countries-110m.json` — 备用国家边界。
-- `assets/map-labels-admin1.json` — 242 条国家名称与 4,589 条混合行政区旧数据，作为构建输入，页面不再直接使用。
-- `assets/map-labels-admin1-current.json` — 正式运行使用的 3,301 条省州级记录，含 230 条无可靠边界的参考点。
-- `scripts/build-admin-current.mjs` — 从原始数据、行政区调整和补充名录构建独立的现行层级文件。
-- `scripts/prepare-map-data.cjs` — 从 Natural Earth GeoJSON 重新生成行政区划与中文名称数据的脚本。
-- `scripts/repair-label-anchors.mjs` — 修复点位落在自身简化边界以外的标签；使用 `--write` 更新数据。
-- `scripts/audit-geography.mjs` — 国家、行政区定位与标签质量审计，含跨日界线和已知地点检查。
-- `scripts/audit-globe-coverage.mjs` — 国家及省州覆盖、区划代码和地名质量审计。
-- `scripts/audit-current-tiers.mjs` — 检查正式运行的数据层级、区划数量、重复代码与国家/省州坐标命中。
-- `GEOGRAPHY-AUDIT.md` — 本项目的数据完整性及文案审查记录、已修复问题和待处理问题。
+- `assets/map-labels-admin1-current.json` — 正式运行使用的省州级地名与区划数据，含无可靠边界的参考点。
+- `assets/primary-division-reference-points.json` — 经筛选的省州级行政区参考坐标，供离线重建使用，**不包含城市目录**。
 - `assets/*-LICENSE.txt` — 内置开源资源的许可证。
-- `server.cjs` — 无第三方依赖的本地静态 HTTP 服务器。
 
 ## 地图数据说明
 
@@ -62,7 +54,7 @@ npm run dev
 
 正式应用只请求国界、国家名称和省州区划资源，**不加载城市数据**。省州级行政区有可用多边形时绘制简化边界；缺失可信边界时仅显示可搜索的参考点。少数省州参考点使用原 GeoNames 行政中心坐标，经重新归并后存为独立的省州级参考坐标。参考坐标来源为 [GeoNames](https://www.geonames.org/)（[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)），请保留该署名。
 
-国界来自 [world-atlas](https://github.com/topojson/world-atlas)，原始省州源来自 [Natural Earth](https://www.naturalearthdata.com/) 1:10m 简化版。**页面实际只加载 `assets/map-labels-admin1-current.json`**，而非历史构建输入 `assets/map-labels-admin1.json`。正式数据目前包含 **3,301 条省州及同级行政区**，覆盖 **225 个国家 / 地区代码**：其中 **230 条仅有参考点**，3 条合并区划的历史边界不完整。法国 18、意大利 20、西班牙 19、英国 4 和马达加斯加 23 条现行一级区划均已补入参考点；这些地区缺少可信边界，故不绘制猜测的新区界。国家 / 地区为 **242 条名称、241 份边界**；图瓦卢只有文字参考点。
+国界来自 [world-atlas](https://github.com/topojson/world-atlas)，原始省州源来自 [Natural Earth](https://www.naturalearthdata.com/) 1:10m 简化版。**页面只加载 `assets/map-labels-admin1-current.json`**。正式数据目前包含 **3,301 条省州及同级行政区**，覆盖 **225 个国家 / 地区代码**：其中 **230 条仅有参考点**，3 条合并区划的历史边界不完整。法国 18、意大利 20、西班牙 19、英国 4 和马达加斯加 23 条现行一级区划均已补入参考点；这些地区缺少可信边界，故不绘制猜测的新区界。国家 / 地区为 **242 条名称、241 份边界**；图瓦卢只有文字参考点。
 
 地图适合科普和交互浏览，**不能作为正式行政边界、领土或法律判界依据**。多边形只是所用历史开放底图中尚可对应现行区划的部分；其余已识别的县区、地理区域和旧省份不再混进省州层。全球行政结构制度不统一，目前无法保证每一国家 / 地区的一级区划均完整、最新。
 
@@ -84,6 +76,6 @@ npm run dev
 
 另外，南极洲已排除无行政层级意义的省州记录；香港 18 区已从中间层排除。中国台湾地区按当前页面既定展示粒度只保留台北、新北、桃园、台中、台南、高雄六个直辖市；县级行政单位不再混入省州层。韩国“江原特别自治道”“全北特别自治道”及捷克“比尔森州”“兹林州”等中文地名已修订。争议边界依照来源呈现，仅供参考。
 
-其余地区仍可能存在边界简化、行政分类差异、中文名称为非标准译名或仍为繁体字，以及未收录的现行区划。参考点锚定的是行政中心，并非一定为辖区几何中心。要补全准确的边界，需要逐国导入有时间版本且许可明确的权威数据。运行 `node scripts/build-admin-current.mjs` 生成正式省州层，再用 `node scripts/audit-current-tiers.mjs`、`node scripts/audit-globe-coverage.mjs` 查看正式展示数据；`node scripts/audit-geography.mjs` 审查的是**原始**底图。
+其余地区仍可能存在边界简化、行政分类差异、中文名称为非标准译名或仍为繁体字，以及未收录的现行区划。参考点锚定的是行政中心，并非一定为辖区几何中心。要补全准确的边界，需要逐国导入有时间版本且许可明确的权威数据。本仓库只包含页面运行所需的成品数据；用于构建上述层级、审计覆盖率和修复标签锚点的离线脚本（`scripts/` 目录）**未包含在本仓库中**。
 
-若需重新生成 `map-labels-admin1.json`，先将 `ne_10m_admin_1_states_provinces.geojson` 和 `ne_50m_admin_0_countries.geojson` 从 [Natural Earth Vector GeoJSON](https://github.com/nvkelso/natural-earth-vector/tree/master/geojson) 下载到 `assets/`，然后执行 `node scripts/prepare-map-data.cjs`。
+`assets/map-labels-admin1-current.json` 是页面直接读取的成品数据。如需从 Natural Earth GeoJSON 重新生成，请自行准备 `ne_10m_admin_1_states_provinces.geojson` 与 `ne_50m_admin_0_countries.geojson`（来自 [Natural Earth Vector GeoJSON](https://github.com/nvkelso/natural-earth-vector/tree/master/geojson)），并自行编写相应的构建脚本——该脚本未随本仓库提供。
